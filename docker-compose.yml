@@ -1,0 +1,100 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${PGUSER:-footprint}
+      POSTGRES_PASSWORD: ${PGPASSWORD:-change-me-strong-password}
+      POSTGRES_DB: ${PGDATABASE:-footprint}
+    volumes:
+      - ./db/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${PGUSER:-footprint}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  mongo:
+    image: mongo:7
+    restart: unless-stopped
+    volumes:
+      - mongodata:/data/db
+    command: ["--wiredTigerCacheSizeGB", "0.5"]
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.runCommand('ping').ok"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--maxmemory", "256mb", "--maxmemory-policy", "allkeys-lru"]
+
+  analytics:
+    build: ./analytics-service
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      PGHOST: postgres
+      MONGO_URL: mongodb://mongo:27017
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mongo:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health')\""]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      PGHOST: postgres
+      MONGO_URL: mongodb://mongo:27017
+      REDIS_URL: redis://redis:6379
+      ANALYTICS_URL: http://analytics:8000
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mongo:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:4000/api/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  # separate process for background sync jobs — API stays responsive
+  worker:
+    build: ./backend
+    restart: unless-stopped
+    command: ["node", "src/workers/index.js"]
+    env_file: .env
+    environment:
+      PGHOST: postgres
+      MONGO_URL: mongodb://mongo:27017
+      REDIS_URL: redis://redis:6379
+      ANALYTICS_URL: http://analytics:8000
+    depends_on:
+      backend:
+        condition: service_started
+
+  frontend:
+    build: ./frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "3000:80"
+
+volumes:
+  pgdata:
+  mongodata:
