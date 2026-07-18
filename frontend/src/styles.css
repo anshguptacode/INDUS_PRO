@@ -247,6 +247,46 @@ section.card { animation-delay: 0.15s; }
   background: rgba(108, 92, 231, 0.12); color: var(--brand);
   box-shadow: inset 0 0 0 1px rgba(108, 92, 231, 0.25);
 }
+.mode-badge.demo {
+  background: var(--brand-grad); color: #fff;
+  box-shadow: 0 2px 8px rgba(108, 92, 231, 0.35);
+}
+.mode-badge.needs {
+  background: rgba(241, 196, 15, 0.16); color: #9c6f10;
+  box-shadow: inset 0 0 0 1px rgba(241, 196, 15, 0.4);
+}
+
+/* per-user API key management */
+.demo-banner {
+  background: rgba(108, 92, 231, 0.08);
+  border-color: rgba(108, 92, 231, 0.25);
+  color: #4a3fb5;
+}
+button.mini { padding: 6px 12px; font-size: 12px; border-radius: 8px; }
+.key-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.key-form {
+  display: flex; flex-direction: column; gap: 8px;
+  padding: 12px; border-radius: 12px;
+  background: rgba(108, 92, 231, 0.05);
+  border: 1px dashed rgba(108, 92, 231, 0.3);
+  animation: fadeUp 0.3s var(--ease) both;
+}
+.key-form input {
+  padding: 9px 12px; border: 1.5px solid rgba(120, 110, 220, 0.2);
+  border-radius: 9px; font-size: 13px; background: rgba(255, 255, 255, 0.8);
+  outline: none; font-family: inherit;
+  transition: border-color 0.2s var(--ease), box-shadow 0.2s var(--ease);
+}
+.key-form input:focus {
+  border-color: var(--brand);
+  box-shadow: 0 0 0 3px rgba(108, 92, 231, 0.12);
+}
+.key-actions { display: flex; gap: 8px; }
+.key-hint { font-size: 11.5px; line-height: 1.5; margin: 0; }
+.key-hint code {
+  background: rgba(108, 92, 231, 0.1); padding: 1px 5px; border-radius: 5px;
+  font-size: 10.5px; word-break: break-all;
+}
 
 .jobs-table { width: 100%; border-collapse: collapse; font-size: 13px; }
 .jobs-table td { padding: 8px; border-bottom: 1px solid rgba(120, 110, 220, 0.08); }

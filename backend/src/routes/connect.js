@@ -4,7 +4,7 @@ const pool = require('../db');
 const config = require('../config');
 const { encrypt } = require('../crypto');
 const { requireAuth } = require('../middleware/auth');
-const { getProvider, platformStatus } = require('../providers');
+const { resolveProvider, platformStatusFor } = require('../providers');
 const { client: redis } = require('../cache');
 const { enqueueSync } = require('../queue');
 
@@ -13,13 +13,14 @@ const router = express.Router();
 const redirectUri = (platform) => `${config.baseUrl}/api/connect/${platform}/callback`;
 const b64url = (buf) => buf.toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 
-router.get('/status', requireAuth, (_req, res) => res.json(platformStatus()));
+router.get('/status', requireAuth, async (req, res) =>
+  res.json(await platformStatusFor(req.user.id)));
 
 // Step 1: get the provider's consent URL (or connect instantly in mock mode)
 router.get('/:platform', requireAuth, async (req, res) => {
   const { platform } = req.params;
   try {
-    const { provider, isMock } = getProvider(platform);
+    const { provider, isMock, creds } = await resolveProvider(platform, req.user.id);
 
     if (isMock) {
       const account = await upsertAccount(req.user.id, platform, {
@@ -36,9 +37,9 @@ router.get('/:platform', requireAuth, async (req, res) => {
     await redis.set(`oauth:${state}`,
       JSON.stringify({ userId: req.user.id, platform, codeVerifier }), { EX: 600 });
 
-    res.json({ url: provider.authUrl({ redirectUri: redirectUri(platform), state, codeChallenge }) });
+    res.json({ url: provider.authUrl({ redirectUri: redirectUri(platform), state, codeChallenge }, creds) });
   } catch (e) {
-    res.status(400).json({ error: e.message });
+    res.status(400).json({ error: e.message, needsKeys: e.code === 'NEEDS_KEYS' });
   }
 });
 
@@ -56,10 +57,10 @@ router.get('/:platform/callback', async (req, res) => {
   if (expected !== platform) return fail('state/platform mismatch');
 
   try {
-    const { provider } = getProvider(platform);
+    const { provider, creds } = await resolveProvider(platform, userId);
     const tokens = await provider.exchangeCode({
       code, redirectUri: redirectUri(platform), codeVerifier,
-    });
+    }, creds);
     const profile = await provider.fetchProfile(tokens.accessToken);
     const account = await upsertAccount(userId, platform, profile, tokens);
     await enqueueSync(account.id, userId);

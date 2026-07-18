@@ -8,10 +8,11 @@ const config = require('../config');
 const logger = require('../logger');
 const { decrypt, encrypt } = require('../crypto');
 const { rawPosts } = require('../mongo');
-const { getProvider } = require('../providers');
+const { resolveProvider } = require('../providers');
 const { RateLimitError } = require('../providers/base');
 const { publish } = require('../realtime');
 const { connection } = require('../queue');
+const { bootstrap } = require('../bootstrap');
 
 const pub = createClient({ url: config.redisUrl });
 pub.connect().catch(() => logger.warn('worker: redis pub unavailable'));
@@ -28,7 +29,7 @@ async function processAccount(job) {
   const jobId = jobRow.rows[0].id;
 
   try {
-    const { provider, isMock } = getProvider(account.platform);
+    const { provider, isMock, creds } = await resolveProvider(account.platform, userId);
     let accessToken = decrypt(account.access_token_enc);
 
     // refresh tokens BEFORE they expire (30-min margin). Critical for
@@ -37,7 +38,7 @@ async function processAccount(job) {
     const REFRESH_MARGIN_MS = 30 * 60 * 1000;
     if (!isMock && account.token_expires_at
         && new Date(account.token_expires_at) < new Date(Date.now() + REFRESH_MARGIN_MS)) {
-      const fresh = await provider.refresh(decrypt(account.refresh_token_enc), accessToken);
+      const fresh = await provider.refresh(decrypt(account.refresh_token_enc), accessToken, creds);
       accessToken = fresh.accessToken;
       await pool.query(
         `UPDATE social_accounts SET access_token_enc = $1,
@@ -121,6 +122,7 @@ new Worker('scheduler', async () => {
 }, { connection });
 
 (async () => {
+  await bootstrap();
   await scheduler.upsertJobScheduler('periodic-sync',
     { every: config.syncIntervalMinutes * 60000 }, { name: 'tick' });
   logger.info({ everyMinutes: config.syncIntervalMinutes }, 'sync worker up');

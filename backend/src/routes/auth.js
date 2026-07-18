@@ -16,7 +16,7 @@ async function issueTokens(res, user) {
   res.json({
     token: access,
     refreshToken: refresh,
-    user: { id: user.id, name: user.name, email: user.email },
+    user: { id: user.id, name: user.name, email: user.email, is_demo: Boolean(user.is_demo) },
   });
 }
 
@@ -27,7 +27,7 @@ router.post('/register', async (req, res) => {
   try {
     const hash = await bcrypt.hash(password, 12);
     const { rows } = await pool.query(
-      'INSERT INTO users (name, email, password_hash) VALUES ($1, $2, $3) RETURNING id, name, email',
+      'INSERT INTO users (name, email, password_hash) VALUES ($1, $2, $3) RETURNING id, name, email, is_demo',
       [name, email.toLowerCase(), hash]);
     await issueTokens(res, rows[0]);
   } catch (e) {
@@ -58,7 +58,7 @@ router.post('/refresh', async (req, res) => {
       'DELETE FROM refresh_tokens WHERE token_hash = $1 AND expires_at > now() RETURNING user_id',
       [sha256(refreshToken)]);
     if (!del.rowCount) return res.status(401).json({ error: 'refresh token revoked' });
-    const { rows } = await pool.query('SELECT id, name, email FROM users WHERE id = $1', [payload.id]);
+    const { rows } = await pool.query('SELECT id, name, email, is_demo FROM users WHERE id = $1', [payload.id]);
     await issueTokens(res, rows[0]);
   } catch {
     res.status(401).json({ error: 'invalid refresh token' });

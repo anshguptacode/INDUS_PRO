@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import api from '../api';
 import { getSocket } from '../socket';
@@ -9,6 +9,80 @@ const META = {
   github: { label: 'GitHub', icon: '🐙' },
 };
 
+const MODE_BADGE = {
+  demo: { cls: 'demo', text: 'DEMO' },
+  'own-keys': { cls: 'live', text: 'YOUR KEYS' },
+  'server-keys': { cls: 'live', text: 'LIVE API' },
+  mock: { cls: 'mock', text: 'MOCK' },
+  'needs-keys': { cls: 'needs', text: 'NEEDS KEYS' },
+};
+
+/* per-platform "bring your own API keys" editor */
+function KeyForm({ platform, status, onSaved }) {
+  const [open, setOpen] = useState(status.mode === 'needs-keys');
+  const [clientId, setClientId] = useState('');
+  const [clientSecret, setClientSecret] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState('');
+
+  async function save(e) {
+    e.preventDefault();
+    setSaving(true); setErr('');
+    try {
+      await api.put(`/keys/${platform}`, { clientId, clientSecret });
+      setClientId(''); setClientSecret(''); setOpen(false);
+      await onSaved();
+    } catch (ex) {
+      setErr(ex.response?.data?.error || 'could not save keys');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function remove() {
+    if (!window.confirm(`Remove your ${platform} API keys?`)) return;
+    await api.delete(`/keys/${platform}`);
+    await onSaved();
+  }
+
+  if (status.has_own_keys && !open) {
+    return (
+      <div className="key-row">
+        <span className="muted">🔑 Using your keys ({status.client_id_masked})</span>
+        <button className="ghost mini" onClick={() => setOpen(true)}>Replace</button>
+        <button className="ghost danger mini" onClick={remove}>Remove</button>
+      </div>
+    );
+  }
+
+  if (!open) {
+    return (
+      <button className="ghost mini" onClick={() => setOpen(true)}>
+        🔑 Use your own API keys
+      </button>
+    );
+  }
+
+  return (
+    <form className="key-form" onSubmit={save}>
+      <input placeholder="Client ID" value={clientId}
+        onChange={(e) => setClientId(e.target.value)} required autoComplete="off" />
+      <input placeholder="Client Secret" type="password" value={clientSecret}
+        onChange={(e) => setClientSecret(e.target.value)} required autoComplete="off" />
+      {err && <span className="error">{err}</span>}
+      <div className="key-actions">
+        <button type="submit" disabled={saving}>{saving ? 'Saving…' : 'Save keys'}</button>
+        <button type="button" className="ghost mini" onClick={() => setOpen(false)}>Cancel</button>
+      </div>
+      <p className="muted key-hint">
+        Create an OAuth app on the platform's developer portal with callback
+        {' '}<code>{window.location.origin}/api/connect/{platform}/callback</code>,
+        then paste its credentials here. Stored encrypted, never shown again.
+      </p>
+    </form>
+  );
+}
+
 export default function Accounts() {
   const [platforms, setPlatforms] = useState([]);
   const [accounts, setAccounts] = useState([]);
@@ -16,6 +90,8 @@ export default function Accounts() {
   const [busy, setBusy] = useState('');
   const [msg, setMsg] = useState('');
   const [params] = useSearchParams();
+  const user = useMemo(() => JSON.parse(localStorage.getItem('user') || '{}'), []);
+  const isDemo = user.is_demo || platforms.some((p) => p.is_demo_user);
 
   const load = useCallback(async () => {
     const [st, ac, sj] = await Promise.all([
@@ -50,7 +126,7 @@ export default function Accounts() {
       if (data.url) {
         window.location.href = data.url; // real OAuth consent screen
       } else if (data.mock) {
-        setMsg(`✅ ${platform} connected in mock mode — demo data is syncing.`);
+        setMsg(`✅ ${platform} connected — demo data is syncing.`);
         await load();
       }
     } catch (err) {
@@ -78,6 +154,14 @@ export default function Accounts() {
 
   const accountFor = (p) => accounts.find((a) => a.platform === p);
 
+  const HINTS = {
+    demo: 'Presentation account — connects instantly with rich demo data.',
+    mock: 'Demo mode — connects with realistic generated data.',
+    'server-keys': 'You will be redirected to authorize access.',
+    'own-keys': 'Connects live using your saved API keys.',
+    'needs-keys': 'Add your API keys below, then connect your real account.',
+  };
+
   return (
     <div className="page">
       <header>
@@ -90,16 +174,24 @@ export default function Accounts() {
         </div>
       </header>
       {msg && <div className="sync-msg">{msg}</div>}
+      {isDemo && (
+        <div className="sync-msg demo-banner">
+          🎓 Demo account — everything here runs on built-in presentation data.
+          Regular users sign up and add their own API keys to analyze real accounts.
+        </div>
+      )}
 
       <section className="cards">
-        {platforms.map(({ platform, mode }) => {
+        {platforms.map((st) => {
+          const { platform, mode } = st;
           const acc = accountFor(platform);
           const meta = META[platform] || { label: platform, icon: '🔗' };
+          const badge = MODE_BADGE[mode] || MODE_BADGE.mock;
           return (
             <div className="card account-card" key={platform}>
               <div className="account-head">
                 <h2>{meta.icon} {meta.label}</h2>
-                <span className={`mode-badge ${mode}`}>{mode === 'live' ? 'LIVE API' : 'MOCK'}</span>
+                <span className={`mode-badge ${badge.cls}`}>{badge.text}</span>
               </div>
               {acc ? (
                 <>
@@ -112,16 +204,14 @@ export default function Accounts() {
                 </>
               ) : (
                 <>
-                  <p className="muted">
-                    {mode === 'live'
-                      ? 'You will be redirected to authorize access.'
-                      : 'No API keys configured — connects with realistic demo data.'}
-                  </p>
-                  <button onClick={() => connect(platform)} disabled={busy === platform}>
+                  <p className="muted">{HINTS[mode]}</p>
+                  <button onClick={() => connect(platform)}
+                    disabled={busy === platform || mode === 'needs-keys'}>
                     {busy === platform ? 'Connecting…' : 'Connect'}
                   </button>
                 </>
               )}
+              {!isDemo && <KeyForm platform={platform} status={st} onSaved={load} />}
             </div>
           );
         })}

@@ -16,26 +16,30 @@ module.exports = {
   usesPkce: true,
   isConfigured: () => Boolean(clientId && clientSecret),
 
-  authUrl({ redirectUri, state, codeChallenge }) {
+  authUrl({ redirectUri, state, codeChallenge }, creds) {
     const q = new URLSearchParams({
-      response_type: 'code', client_id: clientId, redirect_uri: redirectUri,
+      response_type: 'code', client_id: creds?.clientId || clientId, redirect_uri: redirectUri,
       scope: SCOPES, state, code_challenge: codeChallenge, code_challenge_method: 'S256',
     });
     return `${AUTH_URL}?${q}`;
   },
 
-  async exchangeCode({ code, redirectUri, codeVerifier }) {
+  async exchangeCode({ code, redirectUri, codeVerifier }, creds) {
+    const id = creds?.clientId || clientId;
+    const secret = creds?.clientSecret || clientSecret;
     const { data } = await axios.post(TOKEN_URL, new URLSearchParams({
       grant_type: 'authorization_code', code, redirect_uri: redirectUri,
-      code_verifier: codeVerifier, client_id: clientId,
-    }), { auth: { username: clientId, password: clientSecret } });
+      code_verifier: codeVerifier, client_id: id,
+    }), { auth: { username: id, password: secret } });
     return tokenSet(data);
   },
 
-  async refresh(refreshToken) {
+  async refresh(refreshToken, _accessToken, creds) {
+    const id = creds?.clientId || clientId;
+    const secret = creds?.clientSecret || clientSecret;
     const { data } = await axios.post(TOKEN_URL, new URLSearchParams({
-      grant_type: 'refresh_token', refresh_token: refreshToken, client_id: clientId,
-    }), { auth: { username: clientId, password: clientSecret } });
+      grant_type: 'refresh_token', refresh_token: refreshToken, client_id: id,
+    }), { auth: { username: id, password: secret } });
     return tokenSet(data);
   },
 

@@ -14,23 +14,25 @@ module.exports = {
   usesPkce: false,
   isConfigured: () => Boolean(clientId && clientSecret),
 
-  authUrl({ redirectUri, state }) {
+  authUrl({ redirectUri, state }, creds) {
     const q = new URLSearchParams({
-      client_id: clientId, redirect_uri: redirectUri, scope: SCOPES,
+      client_id: creds?.clientId || clientId, redirect_uri: redirectUri, scope: SCOPES,
       response_type: 'code', state,
     });
     return `https://www.facebook.com/v21.0/dialog/oauth?${q}`;
   },
 
-  async exchangeCode({ code, redirectUri }) {
+  async exchangeCode({ code, redirectUri }, creds) {
+    const id = creds?.clientId || clientId;
+    const secret = creds?.clientSecret || clientSecret;
     // short-lived code -> user token -> long-lived token (~60 days)
     const shortTok = await apiGet(`${GRAPH}/oauth/access_token?` + new URLSearchParams({
-      client_id: clientId, client_secret: clientSecret,
+      client_id: id, client_secret: secret,
       redirect_uri: redirectUri, code,
     }));
     const longTok = await apiGet(`${GRAPH}/oauth/access_token?` + new URLSearchParams({
-      grant_type: 'fb_exchange_token', client_id: clientId,
-      client_secret: clientSecret, fb_exchange_token: shortTok.access_token,
+      grant_type: 'fb_exchange_token', client_id: id,
+      client_secret: secret, fb_exchange_token: shortTok.access_token,
     }));
     return {
       accessToken: longTok.access_token,
@@ -40,11 +42,11 @@ module.exports = {
     };
   },
 
-  async refresh(_ignored, accessToken) {
+  async refresh(_ignored, accessToken, creds) {
     // re-exchange the still-valid long-lived token for a fresh one
     const longTok = await apiGet(`${GRAPH}/oauth/access_token?` + new URLSearchParams({
-      grant_type: 'fb_exchange_token', client_id: clientId,
-      client_secret: clientSecret, fb_exchange_token: accessToken,
+      grant_type: 'fb_exchange_token', client_id: creds?.clientId || clientId,
+      client_secret: creds?.clientSecret || clientSecret, fb_exchange_token: accessToken,
     }));
     return {
       accessToken: longTok.access_token,

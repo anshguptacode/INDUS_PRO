@@ -13,6 +13,11 @@ const config = {
   redisUrl: process.env.REDIS_URL || 'redis://localhost:6379',
   mongoUrl: process.env.MONGO_URL || 'mongodb://localhost:27017',
   analyticsUrl: process.env.ANALYTICS_URL || 'http://localhost:8000',
+  // presentation demo account — seeded at boot, always uses mock data
+  demo: {
+    email: (process.env.DEMO_EMAIL || 'demo@footprint.pro').toLowerCase(),
+    password: process.env.DEMO_PASSWORD || '',   // empty = demo account disabled
+  },
   providers: {
     twitter: {
       clientId: process.env.TWITTER_CLIENT_ID,

@@ -11,16 +11,16 @@ module.exports = {
   usesPkce: false,
   isConfigured: () => Boolean(clientId && clientSecret),
 
-  authUrl({ redirectUri, state }) {
+  authUrl({ redirectUri, state }, creds) {
     const q = new URLSearchParams({
-      client_id: clientId, redirect_uri: redirectUri, scope: 'read:user', state,
+      client_id: creds?.clientId || clientId, redirect_uri: redirectUri, scope: 'read:user', state,
     });
     return `https://github.com/login/oauth/authorize?${q}`;
   },
 
-  async exchangeCode({ code, redirectUri }) {
+  async exchangeCode({ code, redirectUri }, creds) {
     const { data } = await axios.post('https://github.com/login/oauth/access_token',
-      { client_id: clientId, client_secret: clientSecret, code, redirect_uri: redirectUri },
+      { client_id: creds?.clientId || clientId, client_secret: creds?.clientSecret || clientSecret, code, redirect_uri: redirectUri },
       { headers: { Accept: 'application/json' } });
     if (data.error) throw new Error(data.error_description || data.error);
     return { accessToken: data.access_token, refreshToken: null, expiresAt: null, scopes: data.scope };

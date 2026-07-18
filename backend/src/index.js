@@ -8,6 +8,7 @@ const pinoHttp = require('pino-http');
 const config = require('./config');
 const logger = require('./logger');
 const { initRealtime } = require('./realtime');
+const { bootstrap } = require('./bootstrap');
 
 const app = express();
 app.set('trust proxy', 1); // behind nginx
@@ -28,6 +29,7 @@ app.use('/api/connect', require('./routes/connect'));
 app.use('/api/dashboard', require('./routes/dashboard'));
 app.use('/api', require('./routes/insights'));
 app.use('/api/sync', require('./routes/sync'));
+app.use('/api/keys', require('./routes/keys'));
 
 // central error handler — never leak stack traces
 app.use((err, req, res, _next) => {
@@ -37,5 +39,7 @@ app.use((err, req, res, _next) => {
 
 const server = http.createServer(app);
 initRealtime(server);
-server.listen(config.port, () =>
-  logger.info({ port: config.port, mockMode: config.mockMode }, 'backend up'));
+bootstrap()
+  .then(() => server.listen(config.port, () =>
+    logger.info({ port: config.port, mockMode: config.mockMode }, 'backend up')))
+  .catch((e) => { logger.error(e, 'bootstrap failed'); process.exit(1); });
